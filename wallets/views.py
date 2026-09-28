@@ -249,6 +249,11 @@ class DepositView(APIView):
                 {"detail": "Wallet not found in this tenant."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc),},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         response_data = {
             "transaction_id": str(transaction_record.id),

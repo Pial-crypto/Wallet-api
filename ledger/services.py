@@ -5,6 +5,20 @@ from django.db.models import Case, F, IntegerField, Sum, Value, When
 
 from .models import Transaction
 from wallets.models import Wallet
+import hashlib
+import json
+
+def build_request_hash(data):
+    normalized_data = json.dumps(
+        data,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    return hashlib.sha256(
+        normalized_data.encode("utf-8")
+    ).hexdigest()
+
 
 
 @transaction.atomic
@@ -24,6 +38,15 @@ def create_deposit(
         )
     )
 
+    request_hash = build_request_hash(
+        {
+            "operation": "deposit",
+            "wallet_id": str(wallet_id),
+            "amount": amount,
+        }
+    )
+    print(request_hash)
+
     existing_transaction = (
         Transaction.objects
         .filter(
@@ -32,8 +55,15 @@ def create_deposit(
         )
         .first()
     )
+    print("existing transaction",existing_transaction)
 
     if existing_transaction:
+        if existing_transaction.request_hash != request_hash:
+            raise ValueError(
+                "Idempotency-Key was already used "
+                "with a different request."
+            )
+
         return existing_transaction, False
 
     transaction_record = Transaction.objects.create(
@@ -42,7 +72,9 @@ def create_deposit(
         transaction_type=Transaction.TransactionType.DEPOSIT,
         amount=amount,
         idempotency_key=idempotency_key,
+        request_hash=request_hash,
     )
+    print(transaction_record,"I am the transaction record")
 
     return transaction_record, True
 
@@ -80,6 +112,8 @@ def get_wallet_balance(*, wallet_id, tenant):
 
     return balance or 0
 
+from django.db import transaction
+
 
 @transaction.atomic
 def create_withdrawal(
@@ -88,7 +122,15 @@ def create_withdrawal(
     tenant,
     amount,
     idempotency_key,
-):
+    
+):  
+    request_hash = build_request_hash(
+    {
+        "operation": "withdraw",
+        "wallet_id": str(wallet_id),
+        "amount": amount,
+    }
+    )
     wallet = (
         Wallet.objects
         .select_for_update()
@@ -108,6 +150,12 @@ def create_withdrawal(
     )
 
     if existing_transaction:
+        if existing_transaction.request_hash != request_hash:
+            raise ValueError(
+                "Idempotency-Key was already used "
+                "with a different request."
+            )
+
         return existing_transaction, False
 
     current_balance = get_wallet_balance(
@@ -127,9 +175,11 @@ def create_withdrawal(
         transaction_type=Transaction.TransactionType.WITHDRAW,
         amount=amount,
         idempotency_key=idempotency_key,
+        request_hash=request_hash,
     )
 
     return transaction_record, True
+
 
 
 @transaction.atomic
@@ -141,28 +191,38 @@ def create_transfer(
     amount,
     idempotency_key,
 ):
+    request_hash = build_request_hash(
+        {
+            "operation": "transfer",
+            "source_wallet_id": str(source_wallet_id),
+            "destination_wallet_id": str(destination_wallet_id),
+            "amount": amount,
+        }
+    )
+
     if source_wallet_id == destination_wallet_id:
         raise ValueError(
             "Source and destination wallets must be different."
         )
 
-    # Check idempotency before doing the financial operation.
     existing_transaction = (
         Transaction.objects
         .filter(
             tenant=tenant,
             idempotency_key=idempotency_key,
-            transaction_type=Transaction.TransactionType.TRANSFER_OUT,
         )
         .first()
     )
 
     if existing_transaction:
+        if existing_transaction.request_hash != request_hash:
+            raise ValueError(
+                "Idempotency-Key was already used "
+                "with a different request."
+            )
+
         return existing_transaction, False
 
-    # Always lock wallets in deterministic ID order.
-    # This helps prevent deadlocks when two transfers happen
-    # in opposite directions concurrently.
     wallet_ids = sorted(
         [
             source_wallet_id,
@@ -212,6 +272,7 @@ def create_transfer(
         amount=amount,
         transfer_id=transfer_id,
         idempotency_key=idempotency_key,
+        request_hash=request_hash,
     )
 
     Transaction.objects.create(
