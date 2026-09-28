@@ -1,13 +1,6 @@
+.env
 venv/
 __pycache__/
-*.py[cod]
-.env
-.pytest_cache/
-.coveragePOSTGRES_DB=wallet_db
-POSTGRES_USER=wallet_user
-POSTGRES_PASSWORD=wallet_password
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
+*.pyc
 db.sqlite3
-.idea/
-.vscode/
+.pytest_cache/
