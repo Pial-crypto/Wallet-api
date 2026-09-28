@@ -15,3 +15,7 @@ class WalletSerializer(serializers.ModelSerializer):
             "id",
             "created_at",
         ]
+
+
+class DepositSerializer(serializers.Serializer):
+    amount = serializers.IntegerField(min_value=1)

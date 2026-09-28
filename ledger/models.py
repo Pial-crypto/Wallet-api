@@ -1,8 +1,6 @@
-from django.db import models
-
-# Create your models here.
-from django.db import models
 import uuid
+
+from django.db import models
 
 
 class Transaction(models.Model):
@@ -12,7 +10,11 @@ class Transaction(models.Model):
         TRANSFER_IN = "TRANSFER_IN", "Transfer In"
         TRANSFER_OUT = "TRANSFER_OUT", "Transfer Out"
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
 
     tenant = models.ForeignKey(
         "tenants.Tenant",
@@ -33,15 +35,13 @@ class Transaction(models.Model):
 
 
     amount = models.PositiveBigIntegerField()
-    print("amount")
 
+ 
     transfer_id = models.UUIDField(
         null=True,
         blank=True,
         db_index=True,
     )
-
-    print(transfer_id)
 
 
     idempotency_key = models.CharField(
@@ -49,12 +49,14 @@ class Transaction(models.Model):
         null=True,
         blank=True,
     )
-    print(idempotency_key)
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
 
     class Meta:
         ordering = ["-created_at"]
+
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "idempotency_key"],
