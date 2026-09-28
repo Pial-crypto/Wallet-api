@@ -19,6 +19,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             "id",
             "wallet",
             "transaction_type",
+            "amount",
             "transfer_id",
             "idempotency_key",
             "created_at",

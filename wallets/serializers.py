@@ -19,3 +19,7 @@ class WalletSerializer(serializers.ModelSerializer):
 
 class DepositSerializer(serializers.Serializer):
     amount = serializers.IntegerField(min_value=1)
+
+
+class WithdrawSerializer(serializers.Serializer):
+    amount = serializers.IntegerField(min_value=1)
