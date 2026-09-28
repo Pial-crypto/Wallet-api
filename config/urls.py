@@ -9,4 +9,13 @@ urlpatterns = [
         "api/tenants/",
         include("tenants.urls"),
     ),
+
+    path(
+        "api/users/",
+        include("users.urls"),
+    ),
+    path(
+    "api/wallets/",
+    include("wallets.urls"),
+),
 ]
