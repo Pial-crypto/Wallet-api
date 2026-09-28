@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import transaction
 from django.db.models import Case, F, IntegerField, Sum, Value, When
 
@@ -78,6 +80,7 @@ def get_wallet_balance(*, wallet_id, tenant):
 
     return balance or 0
 
+
 @transaction.atomic
 def create_withdrawal(
     *,
@@ -105,7 +108,6 @@ def create_withdrawal(
     )
 
     if existing_transaction:
-        print("I am existing",existing_transaction)
         return existing_transaction, False
 
     current_balance = get_wallet_balance(
@@ -114,7 +116,6 @@ def create_withdrawal(
     )
 
     if current_balance < amount:
-        print("Insufficient bro")
         raise ValueError(
             f"Insufficient funds. "
             f"Available balance: {current_balance}"
@@ -127,6 +128,98 @@ def create_withdrawal(
         amount=amount,
         idempotency_key=idempotency_key,
     )
-    print(transaction_record)
 
     return transaction_record, True
+
+
+@transaction.atomic
+def create_transfer(
+    *,
+    source_wallet_id,
+    destination_wallet_id,
+    tenant,
+    amount,
+    idempotency_key,
+):
+    if source_wallet_id == destination_wallet_id:
+        raise ValueError(
+            "Source and destination wallets must be different."
+        )
+
+    # Check idempotency before doing the financial operation.
+    existing_transaction = (
+        Transaction.objects
+        .filter(
+            tenant=tenant,
+            idempotency_key=idempotency_key,
+            transaction_type=Transaction.TransactionType.TRANSFER_OUT,
+        )
+        .first()
+    )
+
+    if existing_transaction:
+        return existing_transaction, False
+
+    # Always lock wallets in deterministic ID order.
+    # This helps prevent deadlocks when two transfers happen
+    # in opposite directions concurrently.
+    wallet_ids = sorted(
+        [
+            source_wallet_id,
+            destination_wallet_id,
+        ],
+        key=str,
+    )
+
+    locked_wallets = list(
+        Wallet.objects
+        .select_for_update()
+        .filter(
+            id__in=wallet_ids,
+            tenant=tenant,
+        )
+        .order_by("id")
+    )
+
+    if len(locked_wallets) != 2:
+        raise Wallet.DoesNotExist
+
+    wallets_by_id = {
+        wallet.id: wallet
+        for wallet in locked_wallets
+    }
+
+    source_wallet = wallets_by_id[source_wallet_id]
+    destination_wallet = wallets_by_id[destination_wallet_id]
+
+    current_balance = get_wallet_balance(
+        wallet_id=source_wallet.id,
+        tenant=tenant,
+    )
+
+    if current_balance < amount:
+        raise ValueError(
+            f"Insufficient funds. "
+            f"Available balance: {current_balance}"
+        )
+
+    transfer_id = uuid.uuid4()
+
+    transfer_out = Transaction.objects.create(
+        tenant=tenant,
+        wallet=source_wallet,
+        transaction_type=Transaction.TransactionType.TRANSFER_OUT,
+        amount=amount,
+        transfer_id=transfer_id,
+        idempotency_key=idempotency_key,
+    )
+
+    Transaction.objects.create(
+        tenant=tenant,
+        wallet=destination_wallet,
+        transaction_type=Transaction.TransactionType.TRANSFER_IN,
+        amount=amount,
+        transfer_id=transfer_id,
+    )
+
+    return transfer_out, True

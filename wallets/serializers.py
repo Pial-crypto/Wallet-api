@@ -23,3 +23,7 @@ class DepositSerializer(serializers.Serializer):
 
 class WithdrawSerializer(serializers.Serializer):
     amount = serializers.IntegerField(min_value=1)
+
+class TransferSerializer(serializers.Serializer):
+    destination_wallet_id = serializers.UUIDField()
+    amount = serializers.IntegerField(min_value=1)

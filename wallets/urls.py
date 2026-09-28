@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     DepositView,
+    TransferView,
     WalletBalanceView,
     WalletCreateView,
     WalletTransactionHistoryView,
@@ -26,6 +27,12 @@ urlpatterns = [
         "<uuid:wallet_id>/withdraw/",
         WithdrawView.as_view(),
         name="wallet-withdraw",
+    ),
+
+    path(
+        "<uuid:wallet_id>/transfer/",
+        TransferView.as_view(),
+        name="wallet-transfer",
     ),
 
     path(

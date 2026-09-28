@@ -10,17 +10,96 @@ from ledger.models import Transaction
 from ledger.serializers import TransactionSerializer
 from ledger.services import (
     create_deposit,
+    create_transfer,
     create_withdrawal,
     get_wallet_balance,
 )
+# from wallets.serializers import TransferSerializer
 
 from .models import Wallet
 from .serializers import (
     DepositSerializer,
     WalletSerializer,
-    WithdrawSerializer
+    WithdrawSerializer,
+    TransferSerializer
+    
 )
+class TransferView(APIView):
+    def post(self, request, wallet_id):
+        idempotency_key = request.headers.get("Idempotency-Key")
 
+        if not idempotency_key:
+            return Response(
+                {
+                    "detail": "Idempotency-Key header is required."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = TransferSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        destination_wallet_id = serializer.validated_data[
+            "destination_wallet_id"
+        ]
+
+        amount = serializer.validated_data["amount"]
+        print(amount,"amounnt")
+        try:
+            transaction_record, created = create_transfer(
+                source_wallet_id=wallet_id,
+                destination_wallet_id=destination_wallet_id,
+                tenant=request.tenant,
+                amount=amount,
+                idempotency_key=idempotency_key,
+            )
+
+        except Wallet.DoesNotExist:
+            return Response(
+                {
+                    "detail": (
+                        "Source or destination wallet "
+                        "not found in this tenant."
+                    )
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValueError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        response_data = {
+            "transaction_id": str(transaction_record.id),
+            "transfer_id": str(
+                transaction_record.transfer_id
+            ),
+            "source_wallet_id": str(
+                transaction_record.wallet_id
+            ),
+            "destination_wallet_id": str(
+                destination_wallet_id
+            ),
+            "transaction_type": (
+                transaction_record.transaction_type
+            ),
+            "amount": transaction_record.amount,
+            "created_at": transaction_record.created_at,
+        }
+
+        if not created:
+            response_data["idempotent"] = True
+
+        return Response(
+            response_data,
+            status=status.HTTP_200_OK,
+        )
+
+    
 class TransactionHistoryPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = "page_size"
